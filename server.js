@@ -29,7 +29,21 @@ function getAllConnectedClients(roomId) {
 io.on('connection', (socket) => {
     console.log('socket connected', socket.id);
 
-    socket.on(ACTIONS.JOIN, ({ roomId, username }) => {
+    socket.on(ACTIONS.JOIN, (payload) => {
+        if (!payload || typeof payload !== 'object') return;
+        const { roomId, username } = payload;
+        // Security: Input validation to prevent socket event spoofing, DoS, or payload injection
+        if (
+            typeof roomId !== 'string' ||
+            typeof username !== 'string' ||
+            !roomId.trim() ||
+            !username.trim() ||
+            roomId.length > 50 ||
+            username.length > 50
+        ) {
+            return;
+        }
+
         userSocketMap[socket.id] = username;
         socket.join(roomId);
         const clients = getAllConnectedClients(roomId);
@@ -42,11 +56,17 @@ io.on('connection', (socket) => {
         });
     });
 
-    socket.on(ACTIONS.CODE_CHANGE, ({ roomId, code }) => {
+    socket.on(ACTIONS.CODE_CHANGE, (payload) => {
+        if (!payload || typeof payload !== 'object') return;
+        const { roomId, code } = payload;
+        if (typeof roomId !== 'string' || roomId.length > 50) return;
         socket.in(roomId).emit(ACTIONS.CODE_CHANGE, { code });
     });
 
-    socket.on(ACTIONS.SYNC_CODE, ({ socketId, code }) => {
+    socket.on(ACTIONS.SYNC_CODE, (payload) => {
+        if (!payload || typeof payload !== 'object') return;
+        const { socketId, code } = payload;
+        if (typeof socketId !== 'string') return;
         io.to(socketId).emit(ACTIONS.CODE_CHANGE, { code });
     });
 
@@ -64,4 +84,8 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`Listening on port ${PORT}`));
+if (process.env.NODE_ENV !== 'test') {
+    server.listen(PORT, () => console.log(`Listening on port ${PORT}`));
+}
+
+module.exports = { app, server, io };
