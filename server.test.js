@@ -77,4 +77,77 @@ describe('Server Socket Event Security Validation', () => {
             done();
         }, 300);
     });
+
+    test('should reject CODE_CHANGE from a client that has not joined the room', (done) => {
+        const joinedClient = ioClient(`http://localhost:${port}`, {
+            'force new connection': true,
+            transports: ['websocket'],
+        });
+
+        joinedClient.on('connect', () => {
+            joinedClient.emit(ACTIONS.JOIN, {
+                roomId: 'room-secure',
+                username: 'memberUser',
+            });
+
+            let receivedCodeChange = false;
+            joinedClient.on(ACTIONS.CODE_CHANGE, () => {
+                receivedCodeChange = true;
+            });
+
+            // clientSocket is NOT joined in room-secure
+            clientSocket.emit(ACTIONS.CODE_CHANGE, {
+                roomId: 'room-secure',
+                code: 'console.log("unauthorized");',
+            });
+
+            setTimeout(() => {
+                expect(receivedCodeChange).toBe(false);
+                joinedClient.disconnect();
+                done();
+            }, 300);
+        });
+    });
+
+    test('should reject CODE_CHANGE with invalid or oversized payload', (done) => {
+        clientSocket.emit(ACTIONS.JOIN, {
+            roomId: 'room-valid',
+            username: 'validUser',
+        });
+
+        const secondClient = ioClient(`http://localhost:${port}`, {
+            'force new connection': true,
+            transports: ['websocket'],
+        });
+
+        secondClient.on('connect', () => {
+            secondClient.emit(ACTIONS.JOIN, {
+                roomId: 'room-valid',
+                username: 'secondUser',
+            });
+
+            let codeChangeReceived = false;
+            secondClient.on(ACTIONS.CODE_CHANGE, () => {
+                codeChangeReceived = true;
+            });
+
+            // Non-string payload
+            clientSocket.emit(ACTIONS.CODE_CHANGE, {
+                roomId: 'room-valid',
+                code: 12345,
+            });
+
+            // Oversized payload (> 100,000 chars)
+            clientSocket.emit(ACTIONS.CODE_CHANGE, {
+                roomId: 'room-valid',
+                code: 'x'.repeat(100001),
+            });
+
+            setTimeout(() => {
+                expect(codeChangeReceived).toBe(false);
+                secondClient.disconnect();
+                done();
+            }, 300);
+        });
+    });
 });
