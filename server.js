@@ -59,14 +59,27 @@ io.on('connection', (socket) => {
     socket.on(ACTIONS.CODE_CHANGE, (payload) => {
         if (!payload || typeof payload !== 'object') return;
         const { roomId, code } = payload;
-        if (typeof roomId !== 'string' || roomId.length > 50) return;
+        if (
+            typeof roomId !== 'string' ||
+            roomId.length > 50 ||
+            typeof code !== 'string' ||
+            code.length > 1e6
+        ) {
+            return;
+        }
         socket.in(roomId).emit(ACTIONS.CODE_CHANGE, { code });
     });
 
     socket.on(ACTIONS.SYNC_CODE, (payload) => {
         if (!payload || typeof payload !== 'object') return;
         const { socketId, code } = payload;
-        if (typeof socketId !== 'string') return;
+        if (
+            typeof socketId !== 'string' ||
+            typeof code !== 'string' ||
+            code.length > 1e6
+        ) {
+            return;
+        }
         io.to(socketId).emit(ACTIONS.CODE_CHANGE, { code });
     });
 
