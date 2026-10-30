@@ -77,4 +77,21 @@ describe('Server Socket Event Security Validation', () => {
             done();
         }, 300);
     });
+
+    test('should ignore CODE_CHANGE payload with non-string code or oversized code', (done) => {
+        let eventReceived = false;
+        clientSocket.on(ACTIONS.CODE_CHANGE, () => {
+            eventReceived = true;
+        });
+
+        clientSocket.emit(ACTIONS.CODE_CHANGE, {
+            roomId: 'room-123',
+            code: 12345,
+        });
+
+        setTimeout(() => {
+            expect(eventReceived).toBe(false);
+            done();
+        }, 300);
+    });
 });
