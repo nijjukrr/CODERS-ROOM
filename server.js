@@ -13,6 +13,9 @@ app.use((req, res, next) => {
     res.sendFile(path.join(__dirname, 'build', 'index.html'));
 });
 
+// Security: Limit code buffer size to 1MB to prevent socket payload abuse and DoS
+const MAX_CODE_LENGTH = 1e6;
+
 const userSocketMap = {};
 function getAllConnectedClients(roomId) {
     // Map
@@ -59,14 +62,18 @@ io.on('connection', (socket) => {
     socket.on(ACTIONS.CODE_CHANGE, (payload) => {
         if (!payload || typeof payload !== 'object') return;
         const { roomId, code } = payload;
+        // Security: Validate roomId and code payload to mitigate DoS, memory bloat, and invalid data injection
         if (typeof roomId !== 'string' || roomId.length > 50) return;
+        if (typeof code !== 'string' || code.length > MAX_CODE_LENGTH) return;
         socket.in(roomId).emit(ACTIONS.CODE_CHANGE, { code });
     });
 
     socket.on(ACTIONS.SYNC_CODE, (payload) => {
         if (!payload || typeof payload !== 'object') return;
         const { socketId, code } = payload;
-        if (typeof socketId !== 'string') return;
+        // Security: Validate socket target and code payload type and length bounds
+        if (typeof socketId !== 'string' || socketId.length > 50) return;
+        if (code !== null && code !== undefined && (typeof code !== 'string' || code.length > MAX_CODE_LENGTH)) return;
         io.to(socketId).emit(ACTIONS.CODE_CHANGE, { code });
     });
 
