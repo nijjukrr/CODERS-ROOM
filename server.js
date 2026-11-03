@@ -8,6 +8,15 @@ const ACTIONS = require('./src/Actions');
 const server = http.createServer(app);
 const io = new Server(server);
 
+// Security: Disable Express fingerprinting and set defensive HTTP headers
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    next();
+});
+
 app.use(express.static('build'));
 app.use((req, res, next) => {
     res.sendFile(path.join(__dirname, 'build', 'index.html'));
@@ -59,14 +68,18 @@ io.on('connection', (socket) => {
     socket.on(ACTIONS.CODE_CHANGE, (payload) => {
         if (!payload || typeof payload !== 'object') return;
         const { roomId, code } = payload;
+        // Security: Bound roomId and code payloads to prevent memory exhaustion and DoS
         if (typeof roomId !== 'string' || roomId.length > 50) return;
+        if (typeof code !== 'string' || code.length > 1e6) return;
         socket.in(roomId).emit(ACTIONS.CODE_CHANGE, { code });
     });
 
     socket.on(ACTIONS.SYNC_CODE, (payload) => {
         if (!payload || typeof payload !== 'object') return;
         const { socketId, code } = payload;
-        if (typeof socketId !== 'string') return;
+        // Security: Validate socket target and bound code payload size
+        if (typeof socketId !== 'string' || socketId.length > 100) return;
+        if (typeof code !== 'string' || code.length > 1e6) return;
         io.to(socketId).emit(ACTIONS.CODE_CHANGE, { code });
     });
 
