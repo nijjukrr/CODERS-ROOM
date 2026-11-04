@@ -77,4 +77,41 @@ describe('Server Socket Event Security Validation', () => {
             done();
         }, 300);
     });
+
+    test('should ignore CODE_CHANGE payload with invalid or oversized code', (done) => {
+        const receivedCodes = [];
+        clientSocket.on(ACTIONS.CODE_CHANGE, ({ code }) => {
+            receivedCodes.push(code);
+        });
+
+        clientSocket.emit(ACTIONS.JOIN, {
+            roomId: 'room-code',
+            username: 'testUser',
+        });
+
+        clientSocket.once(ACTIONS.JOINED, () => {
+            // Invalid non-string code
+            clientSocket.emit(ACTIONS.CODE_CHANGE, {
+                roomId: 'room-code',
+                code: { invalid: 'object' },
+            });
+
+            // Oversized code (> 1,000,000 characters)
+            clientSocket.emit(ACTIONS.CODE_CHANGE, {
+                roomId: 'room-code',
+                code: 'x'.repeat(1000001),
+            });
+
+            // Invalid roomId
+            clientSocket.emit(ACTIONS.CODE_CHANGE, {
+                roomId: 12345,
+                code: 'valid code',
+            });
+
+            setTimeout(() => {
+                expect(receivedCodes).toHaveLength(0);
+                done();
+            }, 300);
+        });
+    });
 });
