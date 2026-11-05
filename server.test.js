@@ -1,6 +1,44 @@
+const http = require('http');
 const ioClient = require('socket.io-client');
 const { server } = require('./server');
 const ACTIONS = require('./src/Actions');
+
+describe('Server Security Headers', () => {
+    let port;
+
+    beforeAll((done) => {
+        if (!server.listening) {
+            server.listen(0, () => {
+                port = server.address().port;
+                done();
+            });
+        } else {
+            port = server.address().port;
+            done();
+        }
+    });
+
+    afterAll((done) => {
+        if (server.listening) {
+            server.close(done);
+        } else {
+            done();
+        }
+    });
+
+    test('should include essential security headers and omit X-Powered-By', (done) => {
+        http.get(`http://localhost:${port}/`, (res) => {
+            expect(res.headers['x-frame-options']).toBe('SAMEORIGIN');
+            expect(res.headers['x-content-type-options']).toBe('nosniff');
+            expect(res.headers['referrer-policy']).toBe(
+                'strict-origin-when-cross-origin'
+            );
+            expect(res.headers['x-xss-protection']).toBe('0');
+            expect(res.headers['x-powered-by']).toBeUndefined();
+            done();
+        });
+    });
+});
 
 describe('Server Socket Event Security Validation', () => {
     let clientSocket;
