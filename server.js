@@ -59,14 +59,23 @@ io.on('connection', (socket) => {
     socket.on(ACTIONS.CODE_CHANGE, (payload) => {
         if (!payload || typeof payload !== 'object') return;
         const { roomId, code } = payload;
-        if (typeof roomId !== 'string' || roomId.length > 50) return;
+        // Security: Authorization check (must be in room) and input validation (type & size limit)
+        if (typeof roomId !== 'string' || roomId.length > 50 || !socket.rooms.has(roomId)) return;
+        if (code !== undefined && code !== null && (typeof code !== 'string' || code.length > 1e6)) return;
         socket.in(roomId).emit(ACTIONS.CODE_CHANGE, { code });
     });
 
     socket.on(ACTIONS.SYNC_CODE, (payload) => {
         if (!payload || typeof payload !== 'object') return;
         const { socketId, code } = payload;
-        if (typeof socketId !== 'string') return;
+        // Security: Prevent unauthorized cross-room code injection; verify recipient shares a room
+        if (typeof socketId !== 'string' || !socketId || socketId === socket.id) return;
+        if (code !== undefined && code !== null && (typeof code !== 'string' || code.length > 1e6)) return;
+        const targetSocket = io.sockets.sockets.get(socketId);
+        if (!targetSocket) return;
+        const hasSharedRoom = [...socket.rooms].some((room) => room !== socket.id && targetSocket.rooms.has(room));
+        if (!hasSharedRoom) return;
+
         io.to(socketId).emit(ACTIONS.CODE_CHANGE, { code });
     });
 

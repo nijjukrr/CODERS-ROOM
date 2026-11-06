@@ -77,4 +77,113 @@ describe('Server Socket Event Security Validation', () => {
             done();
         }, 300);
     });
+
+    test('should prevent broadcasting CODE_CHANGE if socket is not in the room', (done) => {
+        const clientSocket2 = ioClient(`http://localhost:${port}`, {
+            'force new connection': true,
+            transports: ['websocket'],
+        });
+
+        clientSocket2.on('connect', () => {
+            clientSocket2.emit(ACTIONS.JOIN, {
+                roomId: 'target-room',
+                username: 'roomUser',
+            });
+        });
+
+        let codeChanged = false;
+        clientSocket2.on(ACTIONS.CODE_CHANGE, () => {
+            codeChanged = true;
+        });
+
+        // clientSocket is NOT in 'target-room'
+        clientSocket.emit(ACTIONS.CODE_CHANGE, {
+            roomId: 'target-room',
+            code: 'console.log("hacked")',
+        });
+
+        setTimeout(() => {
+            clientSocket2.disconnect();
+            expect(codeChanged).toBe(false);
+            done();
+        }, 300);
+    });
+
+    test('should prevent SYNC_CODE targeting socket in a different room', (done) => {
+        const clientSocket2 = ioClient(`http://localhost:${port}`, {
+            'force new connection': true,
+            transports: ['websocket'],
+        });
+
+        clientSocket.emit(ACTIONS.JOIN, {
+            roomId: 'room-A',
+            username: 'userA',
+        });
+
+        clientSocket2.on('connect', () => {
+            clientSocket2.emit(ACTIONS.JOIN, {
+                roomId: 'room-B',
+                username: 'userB',
+            });
+        });
+
+        let codeSynced = false;
+        clientSocket2.on(ACTIONS.CODE_CHANGE, () => {
+            codeSynced = true;
+        });
+
+        setTimeout(() => {
+            // clientSocket in room-A attempts to send code to clientSocket2 in room-B
+            clientSocket.emit(ACTIONS.SYNC_CODE, {
+                socketId: clientSocket2.id,
+                code: 'maliciousSync()',
+            });
+
+            setTimeout(() => {
+                clientSocket2.disconnect();
+                expect(codeSynced).toBe(false);
+                done();
+            }, 300);
+        }, 100);
+    });
+
+    test('should allow SYNC_CODE and CODE_CHANGE between sockets in the same room', (done) => {
+        const clientSocket2 = ioClient(`http://localhost:${port}`, {
+            'force new connection': true,
+            transports: ['websocket'],
+        });
+
+        clientSocket.emit(ACTIONS.JOIN, {
+            roomId: 'room-shared',
+            username: 'user1',
+        });
+
+        clientSocket2.on('connect', () => {
+            clientSocket2.emit(ACTIONS.JOIN, {
+                roomId: 'room-shared',
+                username: 'user2',
+            });
+        });
+
+        let codeReceivedCount = 0;
+        clientSocket2.on(ACTIONS.CODE_CHANGE, ({ code }) => {
+            if (code === 'sharedCode()') {
+                codeReceivedCount++;
+            }
+        });
+
+        setTimeout(() => {
+            // Authorized CODE_CHANGE in room-shared
+            clientSocket.emit(ACTIONS.CODE_CHANGE, {
+                roomId: 'room-shared',
+                code: 'sharedCode()',
+            });
+
+            setTimeout(() => {
+                clientSocket2.disconnect();
+                expect(codeReceivedCount).toBe(1);
+                done();
+            }, 300);
+        }, 100);
+    });
 });
