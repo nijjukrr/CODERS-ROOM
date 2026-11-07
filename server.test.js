@@ -1,6 +1,34 @@
+const http = require('http');
 const ioClient = require('socket.io-client');
 const { server } = require('./server');
 const ACTIONS = require('./src/Actions');
+
+describe('Server HTTP Security Headers', () => {
+    let port;
+
+    beforeAll((done) => {
+        server.listen(0, () => {
+            port = server.address().port;
+            done();
+        });
+    });
+
+    afterAll((done) => {
+        server.close(done);
+    });
+
+    test('should include essential security headers and omit X-Powered-By', (done) => {
+        http.get(`http://localhost:${port}/`, (res) => {
+            expect(res.headers['x-content-type-options']).toBe('nosniff');
+            expect(res.headers['x-frame-options']).toBe('SAMEORIGIN');
+            expect(res.headers['strict-transport-security']).toBe(
+                'max-age=31536000; includeSubDomains'
+            );
+            expect(res.headers['x-powered-by']).toBeUndefined();
+            done();
+        });
+    });
+});
 
 describe('Server Socket Event Security Validation', () => {
     let clientSocket;
