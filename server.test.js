@@ -77,4 +77,104 @@ describe('Server Socket Event Security Validation', () => {
             done();
         }, 300);
     });
+
+    test('should ignore CODE_CHANGE if sender is not joined to the room', (done) => {
+        const clientSocket2 = ioClient(`http://localhost:${port}`, {
+            'force new connection': true,
+            transports: ['websocket'],
+        });
+
+        clientSocket2.on('connect', () => {
+            clientSocket2.emit(ACTIONS.JOIN, {
+                roomId: 'room-code-test',
+                username: 'listenerUser',
+            });
+        });
+
+        let codeChangeReceived = false;
+        clientSocket2.on(ACTIONS.CODE_CHANGE, () => {
+            codeChangeReceived = true;
+        });
+
+        // clientSocket (not joined to 'room-code-test') tries to emit CODE_CHANGE to 'room-code-test'
+        clientSocket.emit(ACTIONS.CODE_CHANGE, {
+            roomId: 'room-code-test',
+            code: 'console.log("unauthorized injection");',
+        });
+
+        setTimeout(() => {
+            expect(codeChangeReceived).toBe(false);
+            clientSocket2.disconnect();
+            done();
+        }, 300);
+    });
+
+    test('should ignore CODE_CHANGE if code payload is invalid or exceeds length limit', (done) => {
+        const clientSocket2 = ioClient(`http://localhost:${port}`, {
+            'force new connection': true,
+            transports: ['websocket'],
+        });
+
+        clientSocket.emit(ACTIONS.JOIN, {
+            roomId: 'room-limit-test',
+            username: 'user1',
+        });
+
+        clientSocket2.on('connect', () => {
+            clientSocket2.emit(ACTIONS.JOIN, {
+                roomId: 'room-limit-test',
+                username: 'user2',
+            });
+        });
+
+        let codeChangeReceived = false;
+        clientSocket2.on(ACTIONS.CODE_CHANGE, () => {
+            codeChangeReceived = true;
+        });
+
+        // Emit non-string or oversized code
+        clientSocket.emit(ACTIONS.CODE_CHANGE, {
+            roomId: 'room-limit-test',
+            code: { script: 'bad object' },
+        });
+
+        setTimeout(() => {
+            expect(codeChangeReceived).toBe(false);
+            clientSocket2.disconnect();
+            done();
+        }, 300);
+    });
+
+    test('should broadcast CODE_CHANGE to other room members when authorized and valid', (done) => {
+        const clientSocket2 = ioClient(`http://localhost:${port}`, {
+            'force new connection': true,
+            transports: ['websocket'],
+        });
+
+        clientSocket.emit(ACTIONS.JOIN, {
+            roomId: 'room-broadcast-test',
+            username: 'senderUser',
+        });
+
+        clientSocket2.on('connect', () => {
+            clientSocket2.emit(ACTIONS.JOIN, {
+                roomId: 'room-broadcast-test',
+                username: 'receiverUser',
+            });
+        });
+
+        clientSocket2.on(ACTIONS.CODE_CHANGE, ({ code }) => {
+            expect(code).toBe('const x = 42;');
+            clientSocket2.disconnect();
+            done();
+        });
+
+        // Wait slightly for both to join room, then emit valid CODE_CHANGE
+        setTimeout(() => {
+            clientSocket.emit(ACTIONS.CODE_CHANGE, {
+                roomId: 'room-broadcast-test',
+                code: 'const x = 42;',
+            });
+        }, 100);
+    });
 });
