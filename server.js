@@ -59,14 +59,31 @@ io.on('connection', (socket) => {
     socket.on(ACTIONS.CODE_CHANGE, (payload) => {
         if (!payload || typeof payload !== 'object') return;
         const { roomId, code } = payload;
-        if (typeof roomId !== 'string' || roomId.length > 50) return;
+        // Security: Input validation & authorization check (must be joined to room)
+        if (
+            typeof roomId !== 'string' ||
+            roomId.length > 50 ||
+            !socket.rooms.has(roomId) ||
+            typeof code !== 'string' ||
+            code.length > 1000000
+        ) {
+            return;
+        }
         socket.in(roomId).emit(ACTIONS.CODE_CHANGE, { code });
     });
 
     socket.on(ACTIONS.SYNC_CODE, (payload) => {
         if (!payload || typeof payload !== 'object') return;
         const { socketId, code } = payload;
-        if (typeof socketId !== 'string') return;
+        // Security: Input validation and size limits on code synchronization
+        if (
+            typeof socketId !== 'string' ||
+            socketId.length > 50 ||
+            typeof code !== 'string' ||
+            code.length > 1000000
+        ) {
+            return;
+        }
         io.to(socketId).emit(ACTIONS.CODE_CHANGE, { code });
     });
 

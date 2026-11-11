@@ -77,4 +77,105 @@ describe('Server Socket Event Security Validation', () => {
             done();
         }, 300);
     });
+
+    test('should not broadcast CODE_CHANGE if socket is not a member of the room', (done) => {
+        const clientSocket2 = ioClient(`http://localhost:${port}`, {
+            'force new connection': true,
+            transports: ['websocket'],
+        });
+
+        clientSocket2.on('connect', () => {
+            clientSocket2.emit(ACTIONS.JOIN, {
+                roomId: 'target-room',
+                username: 'victim',
+            });
+
+            let changeReceived = false;
+            clientSocket2.on(ACTIONS.CODE_CHANGE, () => {
+                changeReceived = true;
+            });
+
+            // clientSocket has NOT joined target-room
+            clientSocket.emit(ACTIONS.CODE_CHANGE, {
+                roomId: 'target-room',
+                code: 'malicious_code()',
+            });
+
+            setTimeout(() => {
+                expect(changeReceived).toBe(false);
+                clientSocket2.disconnect();
+                done();
+            }, 300);
+        });
+    });
+
+    test('should broadcast CODE_CHANGE if socket is authorized and in the room', (done) => {
+        const clientSocket2 = ioClient(`http://localhost:${port}`, {
+            'force new connection': true,
+            transports: ['websocket'],
+        });
+
+        clientSocket2.on('connect', () => {
+            clientSocket2.emit(ACTIONS.JOIN, {
+                roomId: 'shared-room',
+                username: 'listener',
+            });
+
+            clientSocket.emit(ACTIONS.JOIN, {
+                roomId: 'shared-room',
+                username: 'sender',
+            });
+
+            clientSocket2.on(ACTIONS.CODE_CHANGE, ({ code }) => {
+                expect(code).toBe('const x = 42;');
+                clientSocket2.disconnect();
+                done();
+            });
+
+            setTimeout(() => {
+                clientSocket.emit(ACTIONS.CODE_CHANGE, {
+                    roomId: 'shared-room',
+                    code: 'const x = 42;',
+                });
+            }, 100);
+        });
+    });
+
+    test('should ignore CODE_CHANGE payload with non-string or oversized code', (done) => {
+        const clientSocket2 = ioClient(`http://localhost:${port}`, {
+            'force new connection': true,
+            transports: ['websocket'],
+        });
+
+        clientSocket2.on('connect', () => {
+            clientSocket2.emit(ACTIONS.JOIN, {
+                roomId: 'valid-room',
+                username: 'user2',
+            });
+
+            clientSocket.emit(ACTIONS.JOIN, {
+                roomId: 'valid-room',
+                username: 'user1',
+            });
+
+            let changeReceived = false;
+            clientSocket2.on(ACTIONS.CODE_CHANGE, () => {
+                changeReceived = true;
+            });
+
+            setTimeout(() => {
+                // Non-string code
+                clientSocket.emit(ACTIONS.CODE_CHANGE, {
+                    roomId: 'valid-room',
+                    code: { evil: true },
+                });
+            }, 100);
+
+            setTimeout(() => {
+                expect(changeReceived).toBe(false);
+                clientSocket2.disconnect();
+                done();
+            }, 300);
+        });
+    });
 });
